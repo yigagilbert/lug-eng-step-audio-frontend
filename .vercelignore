@@ -5,5 +5,6 @@ node_modules
 tsconfig.tsbuildinfo
 .DS_Store
 
-# The served sample clips live in public/luganda_inputs.
-luganda_inputs
+# Ignore only the duplicate root dataset folder.
+# The served sample clips in public/luganda_inputs must be uploaded to Vercel.
+/luganda_inputs

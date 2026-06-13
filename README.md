@@ -115,6 +115,7 @@ API configuration errors:
 - If the UI says `Configured Modal URL is not the Step-Audio2 FastAPI endpoint`, the URL is a Modal host but not the ASGI app endpoint. Use the URL printed for `StepAudio2ModalService.fastapi_app`, which should respond to `/health`.
 - On Vercel, make sure `MODAL_TRANSLATE_URL` and `MODAL_API_KEY` are configured in Project Settings -> Environment Variables, then redeploy.
 - If `/api/translate` returns 500 in production, check the Vercel Function logs for missing environment variables or upstream Modal errors.
+- If sample clips return 404 on Vercel, verify `public/luganda_inputs/*.wav` is committed and that `.vercelignore` does not exclude `public/luganda_inputs`.
 
 Translation service errors:
 
