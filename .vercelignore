@@ -1,0 +1,9 @@
+.next
+out
+coverage
+node_modules
+tsconfig.tsbuildinfo
+.DS_Store
+
+# The served sample clips live in public/luganda_inputs.
+luganda_inputs

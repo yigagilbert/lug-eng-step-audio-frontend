@@ -55,41 +55,31 @@ Authorization: Bearer ${MODAL_API_KEY}
 
 The Modal API key is never referenced by a client component and is never sent to the browser.
 
-## GitHub Pages Deployment
+## Vercel Deployment
 
-This repository includes a GitHub Actions workflow at `.github/workflows/deploy-pages.yml`.
-Every push to `main` runs lint, tests, a static Next.js export, and deploys the `out`
-artifact to GitHub Pages.
+Vercel is the recommended production target for this app because it can host both
+the Next.js frontend and the server-side `POST /api/translate` route. The browser
+calls `/api/translate` on the same Vercel domain, while `MODAL_API_KEY` remains a
+server-only environment variable.
 
-GitHub Pages is static hosting, so it cannot run the Next.js `POST /api/translate`
-route. Do not put `MODAL_API_KEY` in GitHub Pages variables or client-side code.
-For a working production Pages deployment, host this same Next.js app, or just its
-`/api/translate` route, on a server-capable platform and point the Pages frontend to it.
-
-Repository setup:
-
-1. In GitHub, open `Settings` -> `Pages`.
-2. Under `Build and deployment`, set `Source` to `GitHub Actions`.
-3. Optional for project Pages: the workflow automatically sets `NEXT_PUBLIC_BASE_PATH`
-   to `/<repo-name>`. For a custom domain or user site, set repository variable
-   `NEXT_PUBLIC_BASE_PATH=/`.
-4. To enable speech translation from GitHub Pages, set repository variable
-   `NEXT_PUBLIC_TRANSLATE_API_URL` to the full public proxy endpoint, for example:
-
-```text
-https://your-next-proxy.example.com/api/translate
-```
-
-5. On the server that hosts `/api/translate`, set:
+1. Push this repository to GitHub.
+2. In Vercel, choose `Add New` -> `Project` and import the GitHub repository.
+3. Use the default Next.js framework settings.
+4. Set the production branch to `main`.
+5. Add these Vercel environment variables for Production, Preview, and Development
+   as needed:
 
 ```bash
 MODAL_TRANSLATE_URL=https://your-modal-url.modal.run
 MODAL_API_KEY=your-service-api-key
-TRANSLATE_ALLOWED_ORIGINS=https://your-github-owner.github.io
+TRANSLATE_ALLOWED_ORIGINS=
 ```
 
-`TRANSLATE_ALLOWED_ORIGINS` is only needed when the static Pages frontend calls the
-API route across origins. Use a comma-separated list for multiple allowed origins.
+6. Deploy. After the first import, every push to `main` automatically creates a
+   production deployment.
+
+`TRANSLATE_ALLOWED_ORIGINS` is optional for Vercel same-origin deployments. Only set
+it if another website must call this app's `/api/translate` route across origins.
 
 ## Testing With Modal
 
@@ -123,7 +113,8 @@ API configuration errors:
 - Restart the dev server after changing environment variables.
 - Confirm `MODAL_TRANSLATE_URL` points to the deployed Modal service. Either the base URL or full `/v1/translate` endpoint is accepted.
 - If the UI says `Configured Modal URL is not the Step-Audio2 FastAPI endpoint`, the URL is a Modal host but not the ASGI app endpoint. Use the URL printed for `StepAudio2ModalService.fastapi_app`, which should respond to `/health`.
-- If GitHub Pages deploys but translation returns 404, set `NEXT_PUBLIC_TRANSLATE_API_URL` to a separately hosted `/api/translate` proxy. GitHub Pages cannot run API routes.
+- On Vercel, make sure `MODAL_TRANSLATE_URL` and `MODAL_API_KEY` are configured in Project Settings -> Environment Variables, then redeploy.
+- If `/api/translate` returns 500 in production, check the Vercel Function logs for missing environment variables or upstream Modal errors.
 
 Translation service errors:
 
