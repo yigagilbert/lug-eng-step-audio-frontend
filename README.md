@@ -21,6 +21,7 @@ Set the required server-side variables:
 ```bash
 MODAL_TRANSLATE_URL=https://your-modal-url.modal.run
 MODAL_API_KEY=your-service-api-key
+TRANSLATE_ALLOWED_ORIGINS=
 ```
 
 `MODAL_TRANSLATE_URL` may be either the Modal base URL or the full
@@ -54,6 +55,42 @@ Authorization: Bearer ${MODAL_API_KEY}
 
 The Modal API key is never referenced by a client component and is never sent to the browser.
 
+## GitHub Pages Deployment
+
+This repository includes a GitHub Actions workflow at `.github/workflows/deploy-pages.yml`.
+Every push to `main` runs lint, tests, a static Next.js export, and deploys the `out`
+artifact to GitHub Pages.
+
+GitHub Pages is static hosting, so it cannot run the Next.js `POST /api/translate`
+route. Do not put `MODAL_API_KEY` in GitHub Pages variables or client-side code.
+For a working production Pages deployment, host this same Next.js app, or just its
+`/api/translate` route, on a server-capable platform and point the Pages frontend to it.
+
+Repository setup:
+
+1. In GitHub, open `Settings` -> `Pages`.
+2. Under `Build and deployment`, set `Source` to `GitHub Actions`.
+3. Optional for project Pages: the workflow automatically sets `NEXT_PUBLIC_BASE_PATH`
+   to `/<repo-name>`. For a custom domain or user site, set repository variable
+   `NEXT_PUBLIC_BASE_PATH=/`.
+4. To enable speech translation from GitHub Pages, set repository variable
+   `NEXT_PUBLIC_TRANSLATE_API_URL` to the full public proxy endpoint, for example:
+
+```text
+https://your-next-proxy.example.com/api/translate
+```
+
+5. On the server that hosts `/api/translate`, set:
+
+```bash
+MODAL_TRANSLATE_URL=https://your-modal-url.modal.run
+MODAL_API_KEY=your-service-api-key
+TRANSLATE_ALLOWED_ORIGINS=https://your-github-owner.github.io
+```
+
+`TRANSLATE_ALLOWED_ORIGINS` is only needed when the static Pages frontend calls the
+API route across origins. Use a comma-separated list for multiple allowed origins.
+
 ## Testing With Modal
 
 1. Confirm your Modal deployment is healthy with its `/health` endpoint.
@@ -66,6 +103,7 @@ The Modal API key is never referenced by a client component and is never sent to
 
 ```bash
 npm run dev
+npm run lint
 npm run build
 npm run start
 npm run test
@@ -85,6 +123,7 @@ API configuration errors:
 - Restart the dev server after changing environment variables.
 - Confirm `MODAL_TRANSLATE_URL` points to the deployed Modal service. Either the base URL or full `/v1/translate` endpoint is accepted.
 - If the UI says `Configured Modal URL is not the Step-Audio2 FastAPI endpoint`, the URL is a Modal host but not the ASGI app endpoint. Use the URL printed for `StepAudio2ModalService.fastapi_app`, which should respond to `/health`.
+- If GitHub Pages deploys but translation returns 404, set `NEXT_PUBLIC_TRANSLATE_API_URL` to a separately hosted `/api/translate` proxy. GitHub Pages cannot run API routes.
 
 Translation service errors:
 

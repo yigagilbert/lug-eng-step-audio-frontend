@@ -3,7 +3,6 @@ import { resolveModalTranslateEndpoint } from "@/lib/modal-url";
 import type { ModalTranslateResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 const MAX_AUDIO_BYTES = 12 * 1024 * 1024;
 const UPSTREAM_TIMEOUT_MS = 120_000;
@@ -30,41 +29,66 @@ type ErrorPayload = {
   warnings?: string[];
 };
 
+type ResponseHeaders = Record<string, string>;
+
+export function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request),
+  });
+}
+
 export async function POST(request: Request) {
+  const corsHeaders = getCorsHeaders(request);
   const contentLength = request.headers.get("content-length");
   if (contentLength && Number(contentLength) > MAX_AUDIO_BYTES + 64_000) {
-    return jsonError("Recording is too large. Please keep clips under 30 seconds.", 413);
+    return jsonError(
+      "Recording is too large. Please keep clips under 30 seconds.",
+      413,
+      undefined,
+      corsHeaders,
+    );
   }
 
   const modalTranslateUrl = resolveModalTranslateEndpoint(process.env.MODAL_TRANSLATE_URL);
   const modalApiKey = process.env.MODAL_API_KEY;
 
   if (!modalTranslateUrl || !modalApiKey) {
-    return jsonError("Translation service is not configured.", 500);
+    return jsonError("Translation service is not configured.", 500, undefined, corsHeaders);
   }
 
   let incomingForm: FormData;
   try {
     incomingForm = await request.formData();
   } catch {
-    return jsonError("Could not read the audio upload. Please try again.", 400);
+    return jsonError("Could not read the audio upload. Please try again.", 400, undefined, corsHeaders);
   }
 
   const audio = incomingForm.get("audio");
   if (!(audio instanceof File)) {
-    return jsonError("Missing audio file in form field `audio`.", 400);
+    return jsonError("Missing audio file in form field `audio`.", 400, undefined, corsHeaders);
   }
 
   if (audio.size <= 0) {
-    return jsonError("Recording was empty. Please record again.", 400);
+    return jsonError("Recording was empty. Please record again.", 400, undefined, corsHeaders);
   }
 
   if (audio.size > MAX_AUDIO_BYTES) {
-    return jsonError("Recording is too large. Please keep clips under 30 seconds.", 413);
+    return jsonError(
+      "Recording is too large. Please keep clips under 30 seconds.",
+      413,
+      undefined,
+      corsHeaders,
+    );
   }
 
   if (!isAllowedAudioType(audio.type)) {
-    return jsonError("Unsupported audio format. Please use a modern browser recorder.", 415);
+    return jsonError(
+      "Unsupported audio format. Please use a modern browser recorder.",
+      415,
+      undefined,
+      corsHeaders,
+    );
   }
 
   const upstreamForm = new FormData();
@@ -107,6 +131,7 @@ export async function POST(request: Request) {
           "Configured Modal URL is not the Step-Audio2 FastAPI endpoint.",
           502,
           "MODAL_TRANSLATE_URL must be the ASGI app URL that responds to /health and /v1/translate. Modal returned `modal-http: invalid function call`, which means the host is a Modal URL but not the callable FastAPI web endpoint.",
+          corsHeaders,
         );
       }
 
@@ -114,12 +139,14 @@ export async function POST(request: Request) {
         "Translation service returned an error.",
         normalizeStatus(upstreamResponse.status),
         upstreamMessage,
+        corsHeaders,
       );
     }
 
     return NextResponse.json(responseBody as ModalTranslateResponse, {
       headers: {
         "Cache-Control": "no-store",
+        ...corsHeaders,
       },
     });
   } catch (error) {
@@ -127,7 +154,7 @@ export async function POST(request: Request) {
       error instanceof DOMException && error.name === "AbortError"
         ? "Translation timed out. Please try a shorter recording."
         : "Could not reach the translation service. Please try again.";
-    return jsonError(message, 504);
+    return jsonError(message, 504, undefined, corsHeaders);
   } finally {
     clearTimeout(timeout);
   }
@@ -187,12 +214,44 @@ function normalizeStatus(status: number) {
   return 502;
 }
 
-function jsonError(error: string, status: number, details?: string) {
+function getCorsHeaders(request: Request): ResponseHeaders {
+  const origin = request.headers.get("origin");
+  const allowedOrigins = getAllowedOrigins();
+
+  if (!origin || !allowedOrigins.has(origin)) {
+    return {};
+  }
+
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
+  };
+}
+
+function getAllowedOrigins() {
+  return new Set(
+    (process.env.TRANSLATE_ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim().replace(/\/+$/, ""))
+      .filter(Boolean),
+  );
+}
+
+function jsonError(
+  error: string,
+  status: number,
+  details?: string,
+  extraHeaders: ResponseHeaders = {},
+) {
   const payload: ErrorPayload = details ? { error, details } : { error };
   return NextResponse.json(payload, {
     status,
     headers: {
       "Cache-Control": "no-store",
+      ...extraHeaders,
     },
   });
 }

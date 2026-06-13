@@ -1,3 +1,5 @@
+import { withBasePath } from "@/lib/public-path";
+
 export type AudioSample = {
   id: string;
   label: string;
@@ -23,6 +25,6 @@ const SAMPLE_FILES = [
 export const AUDIO_SAMPLES: AudioSample[] = SAMPLE_FILES.map((filename, index) => ({
   id: filename,
   label: `Sample ${index + 1}`,
-  src: `/luganda_inputs/${encodeURIComponent(filename)}`,
+  src: withBasePath(`/luganda_inputs/${encodeURIComponent(filename)}`),
   filename,
 }));
