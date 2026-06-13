@@ -1,0 +1,198 @@
+import { NextResponse } from "next/server";
+import { resolveModalTranslateEndpoint } from "@/lib/modal-url";
+import type { ModalTranslateResponse } from "@/lib/types";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const MAX_AUDIO_BYTES = 12 * 1024 * 1024;
+const UPSTREAM_TIMEOUT_MS = 120_000;
+
+const ALLOWED_FIELDS = new Set([
+  "return_audio",
+  "return_text",
+  "temperature",
+  "top_p",
+  "max_new_tokens",
+  "repetition_penalty",
+  "voice_preset",
+]);
+
+const DEFAULT_FIELDS: Record<string, string> = {
+  return_audio: "true",
+  return_text: "true",
+  voice_preset: "default_female",
+};
+
+type ErrorPayload = {
+  error: string;
+  details?: string;
+  warnings?: string[];
+};
+
+export async function POST(request: Request) {
+  const contentLength = request.headers.get("content-length");
+  if (contentLength && Number(contentLength) > MAX_AUDIO_BYTES + 64_000) {
+    return jsonError("Recording is too large. Please keep clips under 30 seconds.", 413);
+  }
+
+  const modalTranslateUrl = resolveModalTranslateEndpoint(process.env.MODAL_TRANSLATE_URL);
+  const modalApiKey = process.env.MODAL_API_KEY;
+
+  if (!modalTranslateUrl || !modalApiKey) {
+    return jsonError("Translation service is not configured.", 500);
+  }
+
+  let incomingForm: FormData;
+  try {
+    incomingForm = await request.formData();
+  } catch {
+    return jsonError("Could not read the audio upload. Please try again.", 400);
+  }
+
+  const audio = incomingForm.get("audio");
+  if (!(audio instanceof File)) {
+    return jsonError("Missing audio file in form field `audio`.", 400);
+  }
+
+  if (audio.size <= 0) {
+    return jsonError("Recording was empty. Please record again.", 400);
+  }
+
+  if (audio.size > MAX_AUDIO_BYTES) {
+    return jsonError("Recording is too large. Please keep clips under 30 seconds.", 413);
+  }
+
+  if (!isAllowedAudioType(audio.type)) {
+    return jsonError("Unsupported audio format. Please use a modern browser recorder.", 415);
+  }
+
+  const upstreamForm = new FormData();
+  upstreamForm.append("audio", audio, audio.name || "luganda-recording.webm");
+
+  for (const [key, defaultValue] of Object.entries(DEFAULT_FIELDS)) {
+    upstreamForm.set(key, getStringField(incomingForm, key) ?? defaultValue);
+  }
+
+  for (const key of ALLOWED_FIELDS) {
+    if (key in DEFAULT_FIELDS) {
+      continue;
+    }
+    const value = getStringField(incomingForm, key);
+    if (value !== undefined) {
+      upstreamForm.set(key, value);
+    }
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+
+  try {
+    const upstreamResponse = await fetch(modalTranslateUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${modalApiKey}`,
+      },
+      body: upstreamForm,
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    const responseBody = await readResponseBody(upstreamResponse);
+
+    if (!upstreamResponse.ok) {
+      const upstreamMessage = getUpstreamMessage(responseBody);
+      if (isModalInvalidFunctionCall(upstreamMessage)) {
+        return jsonError(
+          "Configured Modal URL is not the Step-Audio2 FastAPI endpoint.",
+          502,
+          "MODAL_TRANSLATE_URL must be the ASGI app URL that responds to /health and /v1/translate. Modal returned `modal-http: invalid function call`, which means the host is a Modal URL but not the callable FastAPI web endpoint.",
+        );
+      }
+
+      return jsonError(
+        "Translation service returned an error.",
+        normalizeStatus(upstreamResponse.status),
+        upstreamMessage,
+      );
+    }
+
+    return NextResponse.json(responseBody as ModalTranslateResponse, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (error) {
+    const message =
+      error instanceof DOMException && error.name === "AbortError"
+        ? "Translation timed out. Please try a shorter recording."
+        : "Could not reach the translation service. Please try again.";
+    return jsonError(message, 504);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function getStringField(form: FormData, key: string): string | undefined {
+  const value = form.get(key);
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function isAllowedAudioType(type: string) {
+  if (!type) {
+    return true;
+  }
+  return (
+    type.startsWith("audio/") ||
+    type === "video/webm" ||
+    type === "application/octet-stream"
+  );
+}
+
+async function readResponseBody(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text.slice(0, 300) };
+  }
+}
+
+function getUpstreamMessage(body: unknown) {
+  if (!body || typeof body !== "object") {
+    return undefined;
+  }
+
+  const record = body as Record<string, unknown>;
+  const candidate = record.error ?? record.detail ?? record.message;
+  return typeof candidate === "string" ? candidate : undefined;
+}
+
+function isModalInvalidFunctionCall(message: string | undefined) {
+  return message?.toLowerCase().includes("modal-http: invalid function call") ?? false;
+}
+
+function normalizeStatus(status: number) {
+  if (status >= 400 && status <= 599) {
+    return status;
+  }
+  return 502;
+}
+
+function jsonError(error: string, status: number, details?: string) {
+  const payload: ErrorPayload = details ? { error, details } : { error };
+  return NextResponse.json(payload, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+    },
+  });
+}
