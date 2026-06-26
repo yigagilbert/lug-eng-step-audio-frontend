@@ -174,7 +174,11 @@ export async function POST(request: Request) {
         return jsonError(
           "Configured Modal URL is not the Step-Audio2 FastAPI endpoint.",
           502,
-          "MODAL_TRANSLATE_URL must be the ASGI app URL that responds to /health and /v1/translate. Modal returned `modal-http: invalid function call`, which means the host is a Modal URL but not the callable FastAPI web endpoint.",
+          "MODAL_TRANSLATE_URL is reaching Modal but not the deployed ASGI app. " +
+            "Expected pattern: https://<workspace>--stepaudio2-luganda-s2st-stepaudio2server-serve.modal.run " +
+            "(after `modal deploy`; drop the `-dev` suffix that `modal run` adds). " +
+            "Look up the current URL with `modal app list` or the last `modal deploy` output, " +
+            "then verify with: curl -H \"Authorization: Bearer $MODAL_API_KEY\" $MODAL_TRANSLATE_URL/health",
           corsHeaders,
         );
       }
