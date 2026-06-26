@@ -5,14 +5,25 @@ import { RotateCcw, Volume2, X } from "lucide-react";
 import { AvatarSpeaker } from "@/components/AvatarSpeaker";
 import { CaptionDisplay } from "@/components/CaptionDisplay";
 import { MicRecorder } from "@/components/MicRecorder";
+import { ModelControls } from "@/components/ModelControls";
 import { SamplePicker } from "@/components/SamplePicker";
 import { createAudioObjectUrl } from "@/lib/audio";
 import { formatDuration, formatTiming } from "@/lib/format";
 import type { AudioSample } from "@/lib/samples";
-import { translateRecording } from "@/lib/translate-client";
+import { fetchHealth, translateRecording } from "@/lib/translate-client";
+import {
+  DEFAULT_SETTINGS,
+  correctDirection,
+  correctVoice,
+  directionSourceLanguage,
+  directionTargetLanguage,
+  type TranslationSettings,
+  type VoiceAvailability,
+} from "@/lib/translation-settings";
 import type { ModalTranslateResponse, TranslationTimings, TranslatorState } from "@/lib/types";
 
 const EMPTY_TIMINGS: TranslationTimings = {};
+const ASSUME_ALL_AVAILABLE: VoiceAvailability = { female: true, male: true };
 
 export function VoiceTranslator() {
   const [state, setState] = useState<TranslatorState>("idle");
@@ -24,6 +35,9 @@ export function VoiceTranslator() {
   const [knownAudioDuration, setKnownAudioDuration] = useState(0);
   const [playbackCycle, setPlaybackCycle] = useState(0);
   const [activeSampleId, setActiveSampleId] = useState<string | null>(null);
+  const [settings, setSettings] = useState<TranslationSettings>(DEFAULT_SETTINGS);
+  const [voiceAvailability, setVoiceAvailability] = useState<VoiceAvailability>(ASSUME_ALL_AVAILABLE);
+  const [adapterAvailability, setAdapterAvailability] = useState<string[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sourceAudioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
@@ -38,6 +52,9 @@ export function VoiceTranslator() {
   const isBusy =
     state === "requesting-permission" || state === "recording" || state === "translating";
 
+  const sourceLanguage = directionSourceLanguage(settings.direction);
+  const targetLanguage = directionTargetLanguage(settings.direction);
+
   const statusText = useMemo(() => {
     switch (state) {
       case "requesting-permission":
@@ -47,7 +64,7 @@ export function VoiceTranslator() {
       case "translating":
         return "Uploading and translating...";
       case "playing":
-        return "Playing English translation.";
+        return `Playing ${targetLanguage} translation.`;
       case "error":
         return error || "Something went wrong.";
       default:
@@ -58,7 +75,27 @@ export function VoiceTranslator() {
         }
         return "Ready when you are.";
     }
-  }, [error, hasPlayableAudio, state, translatedText]);
+  }, [error, hasPlayableAudio, state, targetLanguage, translatedText]);
+
+  // Poll /health once on mount so the UI knows which adapters/voices are provisioned.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const health = await fetchHealth();
+      if (cancelled || !health) {
+        return;
+      }
+      if (health.voices) {
+        setVoiceAvailability(health.voices);
+      }
+      if (Array.isArray(health.adapters)) {
+        setAdapterAvailability(health.adapters);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -153,6 +190,18 @@ export function VoiceTranslator() {
     return () => window.cancelAnimationFrame(frame);
   }, [isPlaying, playbackCycle]);
 
+  function handleSettingsChange(next: TranslationSettings) {
+    // Re-validate when model_mode changes (focused cannot do eng_to_lug).
+    const correctedDirection = correctDirection(next.modelMode, next.direction);
+    // Re-validate when voice availability or selection changes.
+    const correctedVoice = correctVoice(voiceAvailability, next.voice);
+    setSettings({
+      modelMode: next.modelMode,
+      direction: correctedDirection,
+      voice:     correctedVoice,
+    });
+  }
+
   async function runTranslation(audio: Blob, filename?: string) {
     audioRef.current?.pause();
     setState("translating");
@@ -163,7 +212,7 @@ export function VoiceTranslator() {
     replaceAudioUrl(null);
 
     try {
-      const response = await translateRecording(audio, filename);
+      const response = await translateRecording(audio, settings, filename);
       setTranslation(response);
 
       if (response.audio_base64) {
@@ -209,7 +258,6 @@ export function VoiceTranslator() {
       return;
     }
 
-    // Play the Luganda source aloud while we translate it in the background.
     startSourcePreview(sample.src);
     await runTranslation(blob, sample.filename);
   }
@@ -286,10 +334,18 @@ export function VoiceTranslator() {
       <div className="translatorTopline">
         <div>
           <p className="eyebrow">Live Session</p>
-          <h2>Speak Luganda, hear English</h2>
+          <h2>Speak {sourceLanguage}, hear {targetLanguage}</h2>
         </div>
         <span className={`statePill state-${state}`}>{stateLabel(state)}</span>
       </div>
+
+      <ModelControls
+        settings={settings}
+        voiceAvailability={voiceAvailability}
+        adapterAvailability={adapterAvailability}
+        disabled={isBusy}
+        onChange={handleSettingsChange}
+      />
 
       <AvatarSpeaker speaking={isPlaying} />
 
@@ -364,6 +420,14 @@ export function VoiceTranslator() {
             <div>
               <dt>Request ID</dt>
               <dd>{translation.id || "n/a"}</dd>
+            </div>
+            <div>
+              <dt>Model / direction / voice</dt>
+              <dd>
+                {translation.model_mode ?? settings.modelMode} /{" "}
+                {translation.direction ?? settings.direction} /{" "}
+                {translation.voice ?? settings.voice}
+              </dd>
             </div>
             <div>
               <dt>Input duration</dt>

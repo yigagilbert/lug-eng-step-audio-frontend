@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
 import { resolveModalTranslateEndpoint } from "@/lib/modal-url";
+import {
+  DIRECTIONS,
+  MODEL_MODES,
+  VOICES,
+  isValidCombo,
+  type Direction,
+  type ModelMode,
+  type Voice,
+} from "@/lib/translation-settings";
 import type { ModalTranslateResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -14,13 +23,17 @@ const ALLOWED_FIELDS = new Set([
   "top_p",
   "max_new_tokens",
   "repetition_penalty",
-  "voice_preset",
+  "model_mode",
+  "direction",
+  "voice",
 ]);
 
 const DEFAULT_FIELDS: Record<string, string> = {
   return_audio: "true",
-  return_text: "true",
-  voice_preset: "default_female",
+  return_text:  "true",
+  model_mode:   "focused",
+  direction:    "lug_to_eng",
+  voice:        "female",
 };
 
 type ErrorPayload = {
@@ -91,8 +104,39 @@ export async function POST(request: Request) {
     );
   }
 
+  // ── Defensive validation of model_mode/direction/voice ─────────────────────
+  const modelMode = (getStringField(incomingForm, "model_mode") ?? DEFAULT_FIELDS.model_mode) as string;
+  const direction = (getStringField(incomingForm, "direction") ?? DEFAULT_FIELDS.direction) as string;
+  const voice     = (getStringField(incomingForm, "voice")     ?? DEFAULT_FIELDS.voice)     as string;
+
+  if (!isMember<ModelMode>(modelMode, MODEL_MODES)) {
+    return jsonError(
+      `model_mode must be one of ${MODEL_MODES.join(", ")}.`,
+      400, undefined, corsHeaders,
+    );
+  }
+  if (!isMember<Direction>(direction, DIRECTIONS)) {
+    return jsonError(
+      `direction must be one of ${DIRECTIONS.join(", ")}.`,
+      400, undefined, corsHeaders,
+    );
+  }
+  if (!isMember<Voice>(voice, VOICES)) {
+    return jsonError(
+      `voice must be one of ${VOICES.join(", ")}.`,
+      400, undefined, corsHeaders,
+    );
+  }
+  if (!isValidCombo(modelMode, direction)) {
+    return jsonError(
+      `direction '${direction}' is not supported by model_mode '${modelMode}'.`,
+      400, undefined, corsHeaders,
+    );
+  }
+
+  // ── Build upstream form ────────────────────────────────────────────────────
   const upstreamForm = new FormData();
-  upstreamForm.append("audio", audio, audio.name || "luganda-recording.webm");
+  upstreamForm.append("audio", audio, audio.name || "source-recording.webm");
 
   for (const [key, defaultValue] of Object.entries(DEFAULT_FIELDS)) {
     upstreamForm.set(key, getStringField(incomingForm, key) ?? defaultValue);
@@ -167,6 +211,10 @@ function getStringField(form: FormData, key: string): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function isMember<T extends string>(value: string, allowed: readonly T[]): value is T {
+  return (allowed as readonly string[]).includes(value);
 }
 
 function isAllowedAudioType(type: string) {

@@ -1,14 +1,25 @@
 import { getRecordingExtension } from "@/lib/audio";
-import type { ApiErrorResponse, ModalTranslateResponse } from "@/lib/types";
+import type { TranslationSettings } from "@/lib/translation-settings";
+import type {
+  ApiErrorResponse,
+  ModalHealthResponse,
+  ModalTranslateResponse,
+} from "@/lib/types";
 
-export async function translateRecording(audio: Blob, filename?: string) {
+export async function translateRecording(
+  audio: Blob,
+  settings: TranslationSettings,
+  filename?: string,
+) {
   const formData = new FormData();
   const extension = getRecordingExtension(audio.type);
 
-  formData.append("audio", audio, filename ?? `luganda-recording.${extension}`);
+  formData.append("audio", audio, filename ?? `source-recording.${extension}`);
   formData.append("return_audio", "true");
   formData.append("return_text", "true");
-  formData.append("voice_preset", "default_female");
+  formData.append("model_mode", settings.modelMode);
+  formData.append("direction",  settings.direction);
+  formData.append("voice",      settings.voice);
 
   const response = await fetch("/api/translate", {
     method: "POST",
@@ -29,4 +40,16 @@ export async function translateRecording(audio: Blob, filename?: string) {
   }
 
   return payload as ModalTranslateResponse;
+}
+
+export async function fetchHealth(): Promise<ModalHealthResponse | null> {
+  try {
+    const response = await fetch("/api/health", { cache: "no-store" });
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as ModalHealthResponse;
+  } catch {
+    return null;
+  }
 }
