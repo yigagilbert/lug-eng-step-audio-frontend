@@ -104,7 +104,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // ── Defensive validation of model_mode/direction/voice ─────────────────────
+  // Defensive validation for the rollback single-model deployment.
   const modelMode = (getStringField(incomingForm, "model_mode") ?? DEFAULT_FIELDS.model_mode) as string;
   const direction = (getStringField(incomingForm, "direction") ?? DEFAULT_FIELDS.direction) as string;
   const voice     = (getStringField(incomingForm, "voice")     ?? DEFAULT_FIELDS.voice)     as string;
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // ── Build upstream form ────────────────────────────────────────────────────
+  // Build upstream form.
   const upstreamForm = new FormData();
   upstreamForm.append("audio", audio, audio.name || "source-recording.webm");
 
@@ -151,6 +151,9 @@ export async function POST(request: Request) {
       upstreamForm.set(key, value);
     }
   }
+
+  // The Modal backend expects voice_preset=default_female for this focused deployment.
+  upstreamForm.set("voice_preset", `default_${voice}`);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);

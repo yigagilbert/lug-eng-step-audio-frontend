@@ -39,7 +39,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## How It Works
 
-The browser records microphone audio with `MediaRecorder` and sends it to the local Next.js route `POST /api/translate` as multipart `FormData`.
+The browser records Luganda microphone audio with `MediaRecorder` and sends it to the local Next.js route `POST /api/translate` as multipart `FormData`. The UI is intentionally fixed to the stable focused Luganda to English model with the default female voice.
 
 The Next.js server route securely proxies the request to:
 
@@ -87,7 +87,7 @@ it if another website must call this app's `/api/translate` route across origins
 2. Set `MODAL_TRANSLATE_URL` without a trailing path, for example `https://your-modal-url.modal.run`.
 3. Start the frontend with `npm run dev`.
 4. Press the microphone button, allow microphone access, speak Luganda, and press again to stop.
-5. The app sends audio to `/api/translate`, displays English captions, and automatically plays generated English speech when `audio_base64` is returned.
+5. The app sends Luganda audio to `/api/translate`, displays English captions, and automatically plays generated English speech when `audio_base64` is returned.
 
 ## Scripts
 

@@ -1,15 +1,15 @@
 /**
  * Translation-settings registry shared between the React UI and the
- * Next.js API route. Mirrors the backend `stepaudio_registry.py`.
+ * Next.js API route. This rollback deployment is intentionally focused only.
  */
 
-export const MODEL_MODES = ["focused", "bidirectional"] as const;
-export const DIRECTIONS  = ["lug_to_eng", "eng_to_lug"] as const;
-export const VOICES      = ["female", "male"] as const;
+export const MODEL_MODES = ["focused"] as const;
+export const DIRECTIONS = ["lug_to_eng"] as const;
+export const VOICES = ["female"] as const;
 
 export type ModelMode = (typeof MODEL_MODES)[number];
 export type Direction = (typeof DIRECTIONS)[number];
-export type Voice     = (typeof VOICES)[number];
+export type Voice = (typeof VOICES)[number];
 
 export type TranslationSettings = {
   modelMode: ModelMode;
@@ -27,8 +27,6 @@ export const DEFAULT_SETTINGS: TranslationSettings = {
 
 const ALLOWED_COMBOS: ReadonlySet<`${ModelMode}|${Direction}`> = new Set([
   "focused|lug_to_eng",
-  "bidirectional|lug_to_eng",
-  "bidirectional|eng_to_lug",
 ]);
 
 export function isValidCombo(modelMode: ModelMode, direction: Direction) {
@@ -36,62 +34,54 @@ export function isValidCombo(modelMode: ModelMode, direction: Direction) {
 }
 
 export function supportedDirections(modelMode: ModelMode): Direction[] {
-  return DIRECTIONS.filter((direction) => isValidCombo(modelMode, direction));
+  void modelMode;
+  return ["lug_to_eng"];
 }
 
 export function isVoiceAvailable(availability: VoiceAvailability, voice: Voice) {
   return availability[voice] === true;
 }
 
-/**
- * When the user switches model_mode, correct an unsupported direction.
- * E.g. switching from `bidirectional` (with eng_to_lug selected) to `focused`
- * → coerce direction back to `lug_to_eng`.
- */
 export function correctDirection(modelMode: ModelMode, direction: Direction): Direction {
-  if (isValidCombo(modelMode, direction)) {
-    return direction;
-  }
-  const fallback = supportedDirections(modelMode)[0];
-  return fallback ?? "lug_to_eng";
+  void modelMode;
+  void direction;
+  return "lug_to_eng";
 }
 
-/**
- * When voice availability changes (e.g. /health reports male unprovisioned),
- * coerce voice to an available one if the current pick is not available.
- */
 export function correctVoice(availability: VoiceAvailability, voice: Voice): Voice {
-  if (isVoiceAvailable(availability, voice)) {
-    return voice;
-  }
-  const fallback = VOICES.find((option) => isVoiceAvailable(availability, option));
-  return fallback ?? "female";
+  void availability;
+  void voice;
+  return "female";
 }
 
 export function modelModeLabel(modelMode: ModelMode) {
-  return modelMode === "focused" ? "Focused" : "Bidirectional";
+  void modelMode;
+  return "Focused";
 }
 
 export function modelModeDescription(modelMode: ModelMode) {
-  return modelMode === "focused"
-    ? "Best Luganda → English quality. Single direction only."
-    : "Both directions. Adds English → Luganda; Luganda → English quality is lower than Focused.";
+  void modelMode;
+  return "Stable Luganda to English speech translation.";
 }
 
 export function directionLabel(direction: Direction) {
-  return direction === "lug_to_eng" ? "Luganda → English" : "English → Luganda";
+  void direction;
+  return "Luganda → English";
 }
 
 export function directionSourceLanguage(direction: Direction) {
-  return direction === "lug_to_eng" ? "Luganda" : "English";
+  void direction;
+  return "Luganda";
 }
 
 export function directionTargetLanguage(direction: Direction) {
-  return direction === "lug_to_eng" ? "English" : "Luganda";
+  void direction;
+  return "English";
 }
 
 export function voiceLabel(voice: Voice) {
-  return voice === "female" ? "Female voice" : "Male voice";
+  void voice;
+  return "Female voice";
 }
 
 export function settingsValidationError(
@@ -99,12 +89,10 @@ export function settingsValidationError(
   availability: VoiceAvailability,
 ): string | null {
   if (!isValidCombo(settings.modelMode, settings.direction)) {
-    return `${directionLabel(settings.direction)} is not supported by the ${modelModeLabel(
-      settings.modelMode,
-    )} model.`;
+    return "This deployment only supports Luganda to English with the focused model.";
   }
   if (!isVoiceAvailable(availability, settings.voice)) {
-    return `${voiceLabel(settings.voice)} is not provisioned on this deployment yet.`;
+    return "The default female voice is not provisioned on this deployment yet.";
   }
   return null;
 }

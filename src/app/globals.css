@@ -67,6 +67,13 @@ button {
   letter-spacing: 0;
 }
 
+.modeSummary {
+  margin: -8px 0 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
 .translatorTopline h2 {
   font-size: clamp(1.2rem, 3vw, 1.7rem);
 }
