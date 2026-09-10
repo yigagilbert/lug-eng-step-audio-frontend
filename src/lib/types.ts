@@ -42,12 +42,26 @@ export type ApiErrorResponse = {
   };
 };
 
+export type ModalModelHealth = {
+  model_repo?: string;
+  base_model?: string;
+  adapter_model?: string;
+  selected_load_mode?: string;
+  inference_path?: string;
+  available_model_modes?: string[];
+  api_version?: string;
+  [key: string]: unknown;
+};
+
 export type ModalHealthResponse = {
-  status: "ok" | "booting";
-  vllm_ready: boolean;
-  model: string;
-  adapters: string[];
-  voices: VoiceAvailability;
+  status?: "ok" | "booting" | "error";
+  ok?: boolean;
+  model_loaded?: boolean;
+  vllm_ready?: boolean;
+  model?: string | ModalModelHealth;
+  adapters?: string[];
+  voices?: VoiceAvailability;
+  error?: string;
 };
 
 export type TranslatorState =

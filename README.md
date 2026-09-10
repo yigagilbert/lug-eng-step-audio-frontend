@@ -39,7 +39,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## How It Works
 
-The browser records Luganda microphone audio with `MediaRecorder` and sends it to the local Next.js route `POST /api/translate` as multipart `FormData`. The UI is intentionally fixed to the stable focused Luganda to English model with the default female voice.
+The browser records Luganda microphone audio with `MediaRecorder`, requests minimal browser audio processing, normalizes live recordings to 16 kHz mono WAV, and sends that cleaned file to the local Next.js route `POST /api/translate` as multipart `FormData`. The UI is intentionally fixed to the stable focused Luganda to English model with the default female voice.
 
 The Next.js server route securely proxies the request to:
 
@@ -106,6 +106,8 @@ Microphone permission denied:
 - Use `https://` in production or `http://localhost` during local development.
 - Reset site microphone permissions in the browser settings.
 - Make sure another application is not exclusively holding the microphone.
+- Use the recorded-audio review panel after a live recording to confirm the exact clip sent to the model is clear and in the expected language.
+- If live recordings are inaccurate while sample clips work, check microphone input gain, distance from the speaker, and browser permissions for the intended microphone device.
 
 API configuration errors:
 

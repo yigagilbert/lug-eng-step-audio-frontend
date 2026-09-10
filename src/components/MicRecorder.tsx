@@ -21,6 +21,15 @@ const MIME_TYPES = [
   "audio/wav",
 ];
 
+const MICROPHONE_CONSTRAINTS: MediaTrackConstraints = {
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: false,
+  channelCount: { ideal: 1 },
+  sampleRate: { ideal: 16_000 },
+  sampleSize: { ideal: 16 },
+};
+
 export function MicRecorder({
   disabled,
   maxDurationSeconds = 30,
@@ -73,11 +82,7 @@ export function MicRecorder({
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: MICROPHONE_CONSTRAINTS,
       });
 
       streamRef.current = stream;

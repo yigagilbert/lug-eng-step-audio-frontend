@@ -6,7 +6,7 @@ import { AvatarSpeaker } from "@/components/AvatarSpeaker";
 import { CaptionDisplay } from "@/components/CaptionDisplay";
 import { MicRecorder } from "@/components/MicRecorder";
 import { SamplePicker } from "@/components/SamplePicker";
-import { createAudioObjectUrl } from "@/lib/audio";
+import { createAudioObjectUrl, normalizeRecordingToWav } from "@/lib/audio";
 import { formatDuration, formatTiming } from "@/lib/format";
 import type { AudioSample } from "@/lib/samples";
 import { translateRecording } from "@/lib/translate-client";
@@ -18,11 +18,28 @@ import {
 import type { ModalTranslateResponse, TranslationTimings, TranslatorState } from "@/lib/types";
 
 const EMPTY_TIMINGS: TranslationTimings = {};
+
+type TranslationRunOptions = {
+  normalizeRecording?: boolean;
+};
+
+type RecordingReview = {
+  url: string;
+  details: string;
+  warning?: string;
+};
+
+type RecordingReviewSource = Omit<RecordingReview, "url"> & {
+  blob: Blob;
+};
+
 export function VoiceTranslator() {
   const [state, setState] = useState<TranslatorState>("idle");
   const [error, setError] = useState("");
   const [translation, setTranslation] = useState<ModalTranslateResponse | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [recordingReview, setRecordingReview] = useState<RecordingReview | null>(null);
+  const [isPreparingRecording, setIsPreparingRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [knownAudioDuration, setKnownAudioDuration] = useState(0);
@@ -32,6 +49,7 @@ export function VoiceTranslator() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sourceAudioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const recordingReviewUrlRef = useRef<string | null>(null);
   const fallbackAudioDurationRef = useRef(0);
 
   const translatedText = translation?.text?.trim() ?? "";
@@ -53,6 +71,9 @@ export function VoiceTranslator() {
       case "recording":
         return "Listening. Press again to stop.";
       case "translating":
+        if (isPreparingRecording) {
+          return "Preparing a clean 16 kHz recording for the model...";
+        }
         return "Uploading and translating...";
       case "playing":
         return `Playing ${targetLanguage} translation.`;
@@ -66,12 +87,15 @@ export function VoiceTranslator() {
         }
         return "Ready when you are.";
     }
-  }, [error, hasPlayableAudio, state, targetLanguage, translatedText]);
+  }, [error, hasPlayableAudio, isPreparingRecording, state, targetLanguage, translatedText]);
 
   useEffect(() => {
     return () => {
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
+      }
+      if (recordingReviewUrlRef.current) {
+        URL.revokeObjectURL(recordingReviewUrlRef.current);
       }
     };
   }, []);
@@ -161,7 +185,11 @@ export function VoiceTranslator() {
     return () => window.cancelAnimationFrame(frame);
   }, [isPlaying, playbackCycle]);
 
-  async function runTranslation(audio: Blob, filename?: string) {
+  async function runTranslation(
+    audio: Blob,
+    filename?: string,
+    options: TranslationRunOptions = {},
+  ) {
     audioRef.current?.pause();
     setState("translating");
     setError("");
@@ -169,9 +197,44 @@ export function VoiceTranslator() {
     setPlaybackTime(0);
     setKnownAudioDuration(0);
     replaceAudioUrl(null);
+    setIsPreparingRecording(Boolean(options.normalizeRecording));
+
+    let uploadAudio = audio;
+    let uploadFilename = filename;
+
+    if (!options.normalizeRecording) {
+      replaceRecordingReview(null);
+    }
 
     try {
-      const response = await translateRecording(audio, settings, filename);
+      if (options.normalizeRecording) {
+        try {
+          const normalizedRecording = await normalizeRecordingToWav(audio);
+          uploadAudio = normalizedRecording.blob;
+          uploadFilename = "source-recording-16khz.wav";
+          replaceRecordingReview({
+            blob: normalizedRecording.blob,
+            details:
+              `Sent ${formatDuration(normalizedRecording.durationSeconds)} as ` +
+              `${normalizedRecording.sampleRate / 1000} kHz mono WAV ` +
+              `(${formatBytes(normalizedRecording.blob.size)}), captured from ` +
+              `${formatMimeType(normalizedRecording.sourceMimeType)}.`,
+          });
+        } catch {
+          replaceRecordingReview({
+            blob: audio,
+            details:
+              `Sent original ${formatMimeType(audio.type || "browser audio")} recording ` +
+              `(${formatBytes(audio.size)}).`,
+            warning:
+              "Browser-side audio cleanup was unavailable, so the original recording was sent.",
+          });
+        } finally {
+          setIsPreparingRecording(false);
+        }
+      }
+
+      const response = await translateRecording(uploadAudio, settings, uploadFilename);
       setTranslation(response);
 
       if (response.audio_base64) {
@@ -181,6 +244,7 @@ export function VoiceTranslator() {
         setState("idle");
       }
     } catch (caughtError) {
+      setIsPreparingRecording(false);
       stopSourcePreview();
       setState("error");
       setError(
@@ -193,7 +257,7 @@ export function VoiceTranslator() {
 
   function handleRecordingComplete(audio: Blob) {
     setActiveSampleId(null);
-    void runTranslation(audio);
+    void runTranslation(audio, undefined, { normalizeRecording: true });
   }
 
   async function handleSampleSelect(sample: AudioSample) {
@@ -250,6 +314,26 @@ export function VoiceTranslator() {
     setAudioUrl(nextUrl);
   }
 
+  function replaceRecordingReview(nextRecording: RecordingReviewSource | null) {
+    if (recordingReviewUrlRef.current) {
+      URL.revokeObjectURL(recordingReviewUrlRef.current);
+      recordingReviewUrlRef.current = null;
+    }
+
+    if (!nextRecording) {
+      setRecordingReview(null);
+      return;
+    }
+
+    const url = URL.createObjectURL(nextRecording.blob);
+    recordingReviewUrlRef.current = url;
+    setRecordingReview({
+      url,
+      details: nextRecording.details,
+      warning: nextRecording.warning,
+    });
+  }
+
   async function handleReplay() {
     const audio = audioRef.current;
     if (!audio || !audioUrl) {
@@ -271,10 +355,12 @@ export function VoiceTranslator() {
     audioRef.current?.pause();
     stopSourcePreview();
     replaceAudioUrl(null);
+    replaceRecordingReview(null);
     setTranslation(null);
     setPlaybackTime(0);
     setKnownAudioDuration(0);
     setIsPlaying(false);
+    setIsPreparingRecording(false);
     setActiveSampleId(null);
     setState("idle");
     setError("");
@@ -318,6 +404,24 @@ export function VoiceTranslator() {
         onStatusChange={setState}
       />
 
+      {recordingReview ? (
+        <details className="recordingReview">
+          <summary>Review recorded audio sent to translation</summary>
+          <div className="recordingReviewBody">
+            <audio
+              aria-label="Recorded audio sent to translation"
+              controls
+              preload="metadata"
+              src={recordingReview.url}
+            />
+            <p>{recordingReview.details}</p>
+            {recordingReview.warning ? (
+              <p className="recordingReviewWarning">{recordingReview.warning}</p>
+            ) : null}
+          </div>
+        </details>
+      ) : null}
+
       <SamplePicker
         activeSampleId={activeSampleId}
         disabled={isBusy}
@@ -342,7 +446,7 @@ export function VoiceTranslator() {
           className="iconButton"
           type="button"
           aria-label="Reset session"
-          disabled={!translation && !error && !audioUrl}
+          disabled={!translation && !error && !audioUrl && !recordingReview}
           onClick={handleReset}
         >
           <RotateCcw aria-hidden="true" size={19} />
@@ -424,4 +528,24 @@ function stateLabel(state: TranslatorState) {
     default:
       return "Idle";
   }
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatMimeType(mimeType: string) {
+  if (!mimeType || mimeType === "unknown") {
+    return "browser audio";
+  }
+
+  return mimeType.split(";")[0];
 }
