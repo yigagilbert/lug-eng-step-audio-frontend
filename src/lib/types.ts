@@ -64,6 +64,8 @@ export type ModalHealthResponse = {
   error?: string;
 };
 
+export type ServiceReadiness = "checking" | "warming" | "ready" | "unavailable";
+
 export type TranslatorState =
   | "idle"
   | "requesting-permission"

@@ -1,6 +1,6 @@
 # Luganda to English Voice Translator
 
-A production-ready Next.js App Router frontend for Luganda-to-English speech-to-speech translation using a deployed Modal Step-Audio2 API.
+A production-ready Next.js App Router frontend for one-way Luganda-to-English speech-to-speech translation using a deployed Modal Step-Audio2 API.
 
 ## Setup
 
@@ -39,7 +39,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## How It Works
 
-The browser records Luganda microphone audio with `MediaRecorder`, requests minimal browser audio processing, normalizes live recordings to 16 kHz mono WAV, and sends that cleaned file to the local Next.js route `POST /api/translate` as multipart `FormData`. The UI is intentionally fixed to the stable focused Luganda to English model with the default female voice.
+The browser records Luganda microphone audio with `MediaRecorder`, requests minimal browser audio processing, normalizes live recordings to 16 kHz mono WAV, and sends that cleaned file to the local Next.js route `POST /api/translate` as multipart `FormData`. The UI is intentionally fixed to the stable focused Luganda to English model with the default female voice, and makes clear that this deployment accepts Luganda input and returns English output only.
 
 The Next.js server route securely proxies the request to:
 
@@ -118,6 +118,7 @@ API configuration errors:
 - On Vercel, make sure `MODAL_TRANSLATE_URL` and `MODAL_API_KEY` are configured in Project Settings -> Environment Variables, then redeploy.
 - If `/api/translate` returns 500 in production, check the Vercel Function logs for missing environment variables or upstream Modal errors.
 - If sample clips return 404 on Vercel, verify `public/luganda_inputs/*.wav` is committed and that `.vercelignore` does not exclude `public/luganda_inputs`.
+- If the first translation after idle is slow, keep the tab open while the UI shows model warm-up progress. Modal cold starts can take longer than warm requests.
 
 Translation service errors:
 

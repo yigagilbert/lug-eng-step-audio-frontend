@@ -3,7 +3,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Luganda to English Voice Translator",
-  description: "Speech-to-speech Luganda to English translation powered by Step-Audio2.",
+  description:
+    "One-way speech-to-speech Luganda to English translation powered by Step-Audio2.",
 };
 
 export const viewport: Viewport = {

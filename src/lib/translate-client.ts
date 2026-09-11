@@ -45,10 +45,14 @@ export async function translateRecording(
 export async function fetchHealth(): Promise<ModalHealthResponse | null> {
   try {
     const response = await fetch("/api/health", { cache: "no-store" });
-    if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ModalHealthResponse | null;
+    if (!payload || typeof payload !== "object") {
       return null;
     }
-    return (await response.json()) as ModalHealthResponse;
+    if (!response.ok && payload.status !== "booting" && payload.status !== "error") {
+      return null;
+    }
+    return payload;
   } catch {
     return null;
   }

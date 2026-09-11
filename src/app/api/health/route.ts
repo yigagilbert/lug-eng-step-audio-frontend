@@ -33,10 +33,19 @@ export async function GET() {
       status: upstream.ok ? 200 : upstream.status,
       headers: { "Cache-Control": "no-store" },
     });
-  } catch {
+  } catch (error) {
+    const isTimeout = error instanceof DOMException && error.name === "AbortError";
     return NextResponse.json(
-      { status: "error", vllm_ready: false },
-      { status: 504 },
+      {
+        status: isTimeout ? "booting" : "error",
+        ok: false,
+        model_loaded: false,
+        vllm_ready: false,
+      },
+      {
+        status: isTimeout ? 202 : 504,
+        headers: { "Cache-Control": "no-store" },
+      },
     );
   } finally {
     clearTimeout(timeout);

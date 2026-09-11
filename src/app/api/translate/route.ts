@@ -12,9 +12,10 @@ import {
 import type { ModalTranslateResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 const MAX_AUDIO_BYTES = 12 * 1024 * 1024;
-const UPSTREAM_TIMEOUT_MS = 120_000;
+const UPSTREAM_TIMEOUT_MS = 240_000;
 
 const ALLOWED_FIELDS = new Set([
   "return_audio",

@@ -4,20 +4,29 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { RotateCcw, Volume2, X } from "lucide-react";
 import { AvatarSpeaker } from "@/components/AvatarSpeaker";
 import { CaptionDisplay } from "@/components/CaptionDisplay";
+import { DirectionNotice } from "@/components/DirectionNotice";
 import { MicRecorder } from "@/components/MicRecorder";
 import { SamplePicker } from "@/components/SamplePicker";
+import { TranslationProgress } from "@/components/TranslationProgress";
 import { createAudioObjectUrl, normalizeRecordingToWav } from "@/lib/audio";
 import { formatDuration, formatTiming } from "@/lib/format";
 import type { AudioSample } from "@/lib/samples";
-import { translateRecording } from "@/lib/translate-client";
+import { fetchHealth, translateRecording } from "@/lib/translate-client";
 import {
   DEFAULT_SETTINGS,
   directionSourceLanguage,
   directionTargetLanguage,
 } from "@/lib/translation-settings";
-import type { ModalTranslateResponse, TranslationTimings, TranslatorState } from "@/lib/types";
+import type {
+  ModalHealthResponse,
+  ModalTranslateResponse,
+  ServiceReadiness,
+  TranslationTimings,
+  TranslatorState,
+} from "@/lib/types";
 
 const EMPTY_TIMINGS: TranslationTimings = {};
+const HEALTH_WARMING_THRESHOLD_MS = 4_000;
 
 type TranslationRunOptions = {
   normalizeRecording?: boolean;
@@ -40,6 +49,8 @@ export function VoiceTranslator() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordingReview, setRecordingReview] = useState<RecordingReview | null>(null);
   const [isPreparingRecording, setIsPreparingRecording] = useState(false);
+  const [serviceReadiness, setServiceReadiness] = useState<ServiceReadiness>("checking");
+  const [translationElapsedSeconds, setTranslationElapsedSeconds] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [knownAudioDuration, setKnownAudioDuration] = useState(0);
@@ -51,6 +62,7 @@ export function VoiceTranslator() {
   const objectUrlRef = useRef<string | null>(null);
   const recordingReviewUrlRef = useRef<string | null>(null);
   const fallbackAudioDurationRef = useRef(0);
+  const translationStartedAtRef = useRef<number | null>(null);
 
   const translatedText = translation?.text?.trim() ?? "";
   const timings = translation?.timings ?? EMPTY_TIMINGS;
@@ -74,7 +86,13 @@ export function VoiceTranslator() {
         if (isPreparingRecording) {
           return "Preparing a clean 16 kHz recording for the model...";
         }
-        return "Uploading and translating...";
+        if (translationElapsedSeconds >= 45) {
+          return "Still working. Keep this tab open while the model finishes.";
+        }
+        if (translationElapsedSeconds >= 8) {
+          return "The translation service may be waking from idle.";
+        }
+        return "Uploading and starting translation...";
       case "playing":
         return `Playing ${targetLanguage} translation.`;
       case "error":
@@ -87,7 +105,38 @@ export function VoiceTranslator() {
         }
         return "Ready when you are.";
     }
-  }, [error, hasPlayableAudio, isPreparingRecording, state, targetLanguage, translatedText]);
+  }, [
+    error,
+    hasPlayableAudio,
+    isPreparingRecording,
+    state,
+    targetLanguage,
+    translatedText,
+    translationElapsedSeconds,
+  ]);
+
+  useEffect(() => {
+    let isActive = true;
+    const warmingTimer = window.setTimeout(() => {
+      if (isActive) {
+        setServiceReadiness("warming");
+      }
+    }, HEALTH_WARMING_THRESHOLD_MS);
+
+    void fetchHealth().then((health) => {
+      if (!isActive) {
+        return;
+      }
+
+      window.clearTimeout(warmingTimer);
+      setServiceReadiness(getReadinessFromHealth(health));
+    });
+
+    return () => {
+      isActive = false;
+      window.clearTimeout(warmingTimer);
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -103,6 +152,23 @@ export function VoiceTranslator() {
   useEffect(() => {
     fallbackAudioDurationRef.current = translation?.audio_duration_seconds ?? 0;
   }, [translation?.audio_duration_seconds]);
+
+  useEffect(() => {
+    if (state !== "translating" || translationStartedAtRef.current === null) {
+      return;
+    }
+
+    const updateElapsed = () => {
+      const startedAt = translationStartedAtRef.current;
+      if (startedAt !== null) {
+        setTranslationElapsedSeconds((Date.now() - startedAt) / 1000);
+      }
+    };
+
+    updateElapsed();
+    const interval = window.setInterval(updateElapsed, 500);
+    return () => window.clearInterval(interval);
+  }, [state]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -197,7 +263,12 @@ export function VoiceTranslator() {
     setPlaybackTime(0);
     setKnownAudioDuration(0);
     replaceAudioUrl(null);
+    translationStartedAtRef.current = Date.now();
+    setTranslationElapsedSeconds(0);
     setIsPreparingRecording(Boolean(options.normalizeRecording));
+    if (serviceReadiness !== "ready") {
+      setServiceReadiness("warming");
+    }
 
     let uploadAudio = audio;
     let uploadFilename = filename;
@@ -235,6 +306,7 @@ export function VoiceTranslator() {
       }
 
       const response = await translateRecording(uploadAudio, settings, uploadFilename);
+      setServiceReadiness("ready");
       setTranslation(response);
 
       if (response.audio_base64) {
@@ -244,14 +316,17 @@ export function VoiceTranslator() {
         setState("idle");
       }
     } catch (caughtError) {
-      setIsPreparingRecording(false);
-      stopSourcePreview();
-      setState("error");
-      setError(
+      const message =
         caughtError instanceof Error
           ? caughtError.message
-          : "Translation failed. Please try again.",
-      );
+          : "Translation failed. Please try again.";
+      setIsPreparingRecording(false);
+      stopSourcePreview();
+      if (isConfigurationError(message)) {
+        setServiceReadiness("unavailable");
+      }
+      setState("error");
+      setError(message);
     }
   }
 
@@ -359,8 +434,10 @@ export function VoiceTranslator() {
     setTranslation(null);
     setPlaybackTime(0);
     setKnownAudioDuration(0);
+    setTranslationElapsedSeconds(0);
     setIsPlaying(false);
     setIsPreparingRecording(false);
+    translationStartedAtRef.current = null;
     setActiveSampleId(null);
     setState("idle");
     setError("");
@@ -379,12 +456,16 @@ export function VoiceTranslator() {
       <div className="translatorTopline">
         <div>
           <p className="eyebrow">Live Session</p>
-          <h2>Speak {sourceLanguage}, hear {targetLanguage}</h2>
+          <h2>{sourceLanguage} speech to {targetLanguage}</h2>
         </div>
         <span className={`statePill state-${state}`}>{stateLabel(state)}</span>
       </div>
 
-      <p className="modeSummary">Focused Luganda to English model · default female voice</p>
+      <DirectionNotice
+        readiness={serviceReadiness}
+        sourceLanguage={sourceLanguage}
+        targetLanguage={targetLanguage}
+      />
 
       <AvatarSpeaker speaking={isPlaying} />
 
@@ -394,6 +475,13 @@ export function VoiceTranslator() {
         progressive={Boolean(audioUrl)}
         text={translatedText}
       />
+
+      {state === "translating" ? (
+        <TranslationProgress
+          elapsedSeconds={translationElapsedSeconds}
+          isPreparingRecording={isPreparingRecording}
+        />
+      ) : null}
 
       <MicRecorder
         disabled={
@@ -548,4 +636,30 @@ function formatMimeType(mimeType: string) {
   }
 
   return mimeType.split(";")[0];
+}
+
+function getReadinessFromHealth(health: ModalHealthResponse | null): ServiceReadiness {
+  if (!health) {
+    return "unavailable";
+  }
+
+  if (health.status === "booting") {
+    return "warming";
+  }
+
+  if (health.ok === true || health.model_loaded === true || health.vllm_ready === true) {
+    return "ready";
+  }
+
+  return health.status === "error" ? "unavailable" : "warming";
+}
+
+function isConfigurationError(message: string) {
+  const normalizedMessage = message.toLowerCase();
+  return (
+    normalizedMessage.includes("not configured") ||
+    normalizedMessage.includes("not the step-audio2") ||
+    normalizedMessage.includes("authorization") ||
+    normalizedMessage.includes("api key")
+  );
 }

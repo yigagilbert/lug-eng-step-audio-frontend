@@ -178,6 +178,109 @@ button {
   background: #fff1f2;
 }
 
+.directionNotice {
+  width: 100%;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.directionRoute {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.directionNode {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(220, 226, 231, 0.9);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.directionNode span,
+.progressKicker {
+  display: block;
+  margin: 0 0 5px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.directionNode strong {
+  display: block;
+  color: var(--text);
+  font-size: clamp(1.1rem, 3vw, 1.45rem);
+  line-height: 1.1;
+}
+
+.directionArrow {
+  color: var(--accent-strong);
+}
+
+.directionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.directionLock,
+.readinessPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.directionLock {
+  color: var(--muted);
+}
+
+.readinessPill {
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: #ffffff;
+}
+
+.readinessDot {
+  width: 8px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.readiness-ready {
+  border-color: rgba(15, 118, 110, 0.24);
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.readiness-checking,
+.readiness-warming {
+  border-color: rgba(37, 99, 235, 0.2);
+  color: var(--blue);
+  background: #eff6ff;
+}
+
+.readiness-unavailable {
+  border-color: rgba(194, 65, 75, 0.24);
+  color: var(--danger);
+  background: #fff1f2;
+}
+
 .avatar {
   display: grid;
   place-items: center;
@@ -299,6 +402,123 @@ button {
   font-size: 1rem;
   line-height: 1.5;
   text-align: center;
+}
+
+.translationProgress {
+  width: 100%;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.progressHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.progressHeader div {
+  min-width: 0;
+}
+
+.progressHeader strong {
+  display: block;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.progressHeader span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.progressHeader time {
+  flex: 0 0 auto;
+  color: var(--blue);
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.progressTrack {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dbeafe;
+}
+
+.progressTrack span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--blue));
+  transition: width 380ms ease;
+}
+
+.progressSteps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progressStep {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.progressStepDot {
+  width: 10px;
+  aspect-ratio: 1;
+  border: 2px solid #bfdbfe;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.progressStep-complete {
+  color: var(--accent-strong);
+}
+
+.progressStep-complete .progressStepDot {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.progressStep-active {
+  color: var(--blue);
+}
+
+.progressStep-active .progressStepDot {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.11);
+}
+
+.coldStartNote {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(183, 121, 31, 0.24);
+  border-radius: 8px;
+  color: #8a5a16;
+  background: #fffbeb;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.45;
 }
 
 .recorderBlock {
@@ -646,6 +866,15 @@ summary:focus-visible {
     flex-direction: column;
   }
 
+  .directionRoute {
+    grid-template-columns: 1fr;
+  }
+
+  .directionArrow {
+    justify-self: center;
+    transform: rotate(90deg);
+  }
+
   .statePill {
     width: max-content;
   }
@@ -656,6 +885,14 @@ summary:focus-visible {
 
   .captionsPanel {
     min-height: 132px;
+  }
+
+  .progressHeader {
+    flex-direction: column;
+  }
+
+  .progressSteps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .detailsPanel dl {
